@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+enum Role {
+  ADMIN
+  COACH
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(COACH)
+  avatar       String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  clients      Client[]
+  notes        Note[]
+  auditLogs    AuditLog[]
+  customFields CustomFieldDef[]
+
+  @@map("users")
+}
+
+// ============================================
+// CLIENT MANAGEMENT
+// ============================================
+
+enum ClientStatus {
+  ONBOARDING
+  ACTIVE
+  AT_RISK
+  COMPLETED
+  PAUSED
+}
+
+enum OnboardingStatus {
+  NOT_BOOKED
+  BOOKED
+  COMPLETED
+  NO_SHOW
+}
+
+model Client {
+  id                 String           @id @default(cuid())
+  name               String
+  email              String           @unique
+  timezone           String           @default("UTC")
+  status             ClientStatus     @default(ONBOARDING)
+  riskReason         String?
+  onboardingStatus   OnboardingStatus @default(NOT_BOOKED)
+  onboardingDateTime DateTime?
+  lastContactDate    DateTime?
+  nextActionDate     DateTime?
+  ghlContactId       String?          // Go High Level contact ID
+  isDeleted          Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  // Relations
+  coach              User             @relation(fields: [coachId], references: [id])
+  coachId            String
+  notes              Note[]
+  progress           ClientProgress[]
+  outcome            Outcome?
+  customFieldValues  CustomFieldValue[]
+  tags               ClientTag[]
+
+  @@map("clients")
+}
+
+model ClientTag {
+  id        String   @id @default(cuid())
+  name      String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, name])
+  @@map("client_tags")
+}
+
+// ============================================
+// NOTES
+// ============================================
+
+model Note {
+  id           String   @id @default(cuid())
+  content      String
+  tags         String   @default("[]") // JSON array of strings
+  isPinned     Boolean  @default(false)
+  nextActionAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId     String
+  author       User     @relation(fields: [authorId], references: [id])
+  authorId     String
+
+  @@map("notes")
+}
+
+// ============================================
+// CURRICULUM & PROGRESS
+// ============================================
+
+model CurriculumStep {
+  id        String   @id @default(cuid())
+  order     Int
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  progress  ClientProgress[]
+
+  @@map("curriculum_steps")
+}
+
+model ClientProgress {
+  id          String    @id @default(cuid())
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId    String
+  step        CurriculumStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  stepId      String
+
+  @@unique([clientId, stepId])
+  @@map("client_progress")
+}
+
+// ============================================
+// OUTCOMES
+// ============================================
+
+enum OutcomeStatus {
+  POTENTIAL
+  NOT_YET
+  MAYBE_LATER
+  IN_PROGRESS
+  DONE
+}
+
+model Outcome {
+  id                  String        @id @default(cuid())
+
+  // Reviews
+  reviewStatus        OutcomeStatus @default(POTENTIAL)
+  reviewDone          Boolean       @default(false)
+
+  // Endorsements (Referrals)
+  endorsementStatus   OutcomeStatus @default(POTENTIAL)
+  endorsementCount    Int           @default(0)
+  endorsementDone     Boolean       @default(false)
+
+  // Inner Circle
+  innerCircleStatus   OutcomeStatus @default(POTENTIAL)
+  innerCircleDone     Boolean       @default(false)
+
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  // Relations
+  client              Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId            String        @unique
+
+  @@map("outcomes")
+}
+
+// ============================================
+// CUSTOM FIELDS
+// ============================================
+
+enum FieldType {
+  TEXT
+  NUMBER
+  BOOLEAN
+  DROPDOWN
+}
+
+model CustomFieldDef {
+  id        String    @id @default(cuid())
+  name      String
+  type      FieldType
+  options   String?   // JSON array for dropdown options
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  createdBy   User               @relation(fields: [createdById], references: [id])
+  createdById String
+  values      CustomFieldValue[]
+
+  @@map("custom_field_defs")
+}
+
+model CustomFieldValue {
+  id        String   @id @default(cuid())
+  value     String   // Stored as string, parsed based on type
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  client      Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId    String
+  fieldDef    CustomFieldDef @relation(fields: [fieldDefId], references: [id], onDelete: Cascade)
+  fieldDefId  String
+
+  @@unique([clientId, fieldDefId])
+  @@map("custom_field_values")
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  EXPORT
+  HEARTBEAT_SENT
+  HEARTBEAT_FAILED
+  SLACK_MODAL_OPENED
+  SLACK_ACTION_TAKEN
+  GHL_SYNC
+}
+
+model AuditLog {
+  id           String      @id @default(cuid())
+  action       AuditAction
+  resourceType String?     // e.g., "Client", "Note", "User"
+  resourceId   String?
+  metadata     String?     // JSON for additional context
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime    @default(now())
+
+  // Relations
+  user         User?       @relation(fields: [userId], references: [id])
+  userId       String?
+
+  @@map("audit_logs")
+}

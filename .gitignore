@@ -22,3 +22,17 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-journal
+server/prisma/*.db
+server/prisma/*.db-journal
+
+# Server build output
+server/dist
