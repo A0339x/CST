@@ -83,3 +83,13 @@ Completed:
 - Added curriculum progress toggling
 - Custom fields display from API
 - Updated OnboardingStatus values (NOT_BOOKED, NO_SHOW)
+
+Security Hardening (based on best practices research):
+- Installed DOMPurify for XSS prevention
+- Added AbortController to Dashboard useEffect for memory leak prevention
+- Added AbortController to ClientProfile useEffect for memory leak prevention
+- Added race condition prevention to progress toggle using Set to track in-progress ops
+- Created NoteItem component with DOMPurify sanitization (defense in depth)
+- Added input validation for note length (max 10,000 chars)
+- Added visual loading indicator on individual progress steps being toggled
+- Improved error messages to not expose internal details
