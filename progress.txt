@@ -45,18 +45,25 @@ Completed:
   - Last contact date updates
 - Created database seed script with sample data
 
+Completed:
+- Frontend API client utility (lib/api.ts)
+- Auth context provider (context/AuthContext.tsx)
+- Login page with real API authentication
+- Admin Users management page
+- Vite proxy configuration
+- Critical security fixes from code review:
+  - JWT secret fails in production if not set
+  - Slack signature verification enforced in production
+  - Global rate limiting on all API routes
+  - Database connectivity in health check
+
 In Progress:
-- Frontend API client utility
-- Auth context provider
+- Dashboard page wired to API (replacing MOCK_CLIENTS)
+- ClientProfile page wired to API with notes functionality
 
 Next Steps:
-- Create lib/api.ts for frontend API calls
-- Create AuthContext for React
-- Update Login page to use real authentication
-- Update Dashboard to fetch from API
-- Update ClientProfile to use API
-- Create Admin Users management page
-- Configure Vite proxy
+- Final testing and cleanup
+- Documentation updates
 
 Notes:
 - Using SQLite for development (Postgres-compatible schema)
@@ -64,3 +71,15 @@ Notes:
 - CSV exports have injection protection
 - Audit logging on all critical actions
 - User needs to set up Slack app and GHL API credentials
+
+=== Session: 2026-02-06 ===
+Resumed: Continuing frontend integration
+
+Completed:
+- Wired Dashboard.tsx to real API (removed MOCK_CLIENTS)
+- Added loading/error states to Dashboard
+- Wired ClientProfile.tsx to real API
+- Added note creation functionality
+- Added curriculum progress toggling
+- Custom fields display from API
+- Updated OnboardingStatus values (NOT_BOOKED, NO_SHOW)
