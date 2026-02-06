@@ -1,0 +1,12 @@
+{
+  "lastRun": null,
+  "summary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "suites": [],
+  "failures": [],
+  "notes": "Tests not yet implemented. Will be added in Phase 9."
+}
