@@ -7,11 +7,17 @@ export enum ClientStatus {
 }
 
 export enum OnboardingStatus {
-  NOT_STARTED = 'NOT_STARTED',
+  NOT_BOOKED = 'NOT_BOOKED',
   BOOKED = 'BOOKED',
   COMPLETED = 'COMPLETED',
-  OVERDUE = 'OVERDUE'
+  NO_SHOW = 'NO_SHOW'
 }
+
+// Legacy mappings for backward compatibility
+export const OnboardingStatusLegacy = {
+  NOT_STARTED: 'NOT_BOOKED',
+  OVERDUE: 'NO_SHOW',
+} as const;
 
 export interface Note {
   id: string;
@@ -62,7 +68,7 @@ export interface StatMetric {
 }
 
 // Navigation Context Types
-export type ViewState = 'LOGIN' | 'DASHBOARD' | 'CLIENT_PROFILE' | 'CURRICULUM' | 'SETTINGS';
+export type ViewState = 'LOGIN' | 'DASHBOARD' | 'CLIENT_PROFILE' | 'CURRICULUM' | 'SETTINGS' | 'ADMIN_USERS';
 
 export interface NavigationContextType {
   currentView: ViewState;
