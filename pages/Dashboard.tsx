@@ -388,24 +388,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
   const [error, setError] = useState<string | null>(null);
 
   // Fetch data on mount
+  // Fetch data with AbortController for cleanup
   useEffect(() => {
-    loadData();
+    const controller = new AbortController();
+    let isMounted = true;
+
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // Fetch clients and curriculum in parallel
+        const [clientsResponse, curriculumResponse] = await Promise.all([
+          clientsApi.list({ limit: 500 }),
+          curriculumApi.list(),
+        ]);
+
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setCurriculumSteps(curriculumResponse.steps);
+
+          // Map API clients to dashboard format
+          const mappedClients = clientsResponse.clients.map((c) =>
+            mapApiClientToDashboard(c, curriculumResponse.steps)
+          );
+          setClients(mappedClients);
+        }
+      } catch (err: any) {
+        // Ignore abort errors - they're intentional
+        if (err.name === 'AbortError') return;
+
+        if (isMounted) {
+          setError(err.message || 'Failed to load data');
+          console.error('Dashboard load error:', err);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+
+    // Cleanup: prevent memory leak and state updates after unmount
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, []);
 
+  // Manual refresh function
   const loadData = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Fetch clients and curriculum in parallel
       const [clientsResponse, curriculumResponse] = await Promise.all([
-        clientsApi.list({ limit: 500 }), // Fetch all clients
+        clientsApi.list({ limit: 500 }),
         curriculumApi.list(),
       ]);
 
       setCurriculumSteps(curriculumResponse.steps);
 
-      // Map API clients to dashboard format
       const mappedClients = clientsResponse.clients.map((c) =>
         mapApiClientToDashboard(c, curriculumResponse.steps)
       );

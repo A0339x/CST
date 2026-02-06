@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { ClientStatus, OnboardingStatus } from '../types';
 import { Badge, ClientStatusBadge, OnboardingBadge } from '../components/ui/Badge';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -25,6 +26,44 @@ import {
   Note,
   CurriculumProgress
 } from '../lib/api';
+
+// Configure DOMPurify for note content - allow basic formatting only
+const DOMPURIFY_CONFIG: DOMPurify.Config = {
+  ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'b', 'i', 'ul', 'ol', 'li'],
+  ALLOWED_ATTR: [],
+  ALLOW_DATA_ATTR: false,
+};
+
+// Secure Note Item component with XSS protection
+const NoteItem: React.FC<{ note: Note }> = ({ note }) => {
+  // Sanitize content to prevent XSS - defense in depth
+  // Even though React escapes text, this protects against future changes
+  // that might introduce dangerouslySetInnerHTML or other vulnerabilities
+  const sanitizedContent = useMemo(() => {
+    // For plain text, sanitize and strip all HTML tags
+    return DOMPurify.sanitize(note.content, { ALLOWED_TAGS: [] });
+  }, [note.content]);
+
+  return (
+    <div className="group relative pl-4 border-l-2 border-slate-700 hover:border-blue-500 transition-colors">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-slate-200 text-sm">{note.author?.name || 'Unknown'}</span>
+          {note.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
+        </div>
+        <span className="text-xs text-slate-500">{new Date(note.createdAt).toLocaleDateString()}</span>
+      </div>
+      <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line">{sanitizedContent}</p>
+      {note.tags && note.tags.length > 0 && (
+        <div className="flex gap-2 mt-2">
+          {note.tags.map(t => (
+            <span key={t} className="text-xs text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">{t}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface ClientProfileProps {
   clientId: string;
@@ -64,11 +103,49 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ clientId, onBack }
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch client data
+  // Race condition prevention: track which steps are being toggled
+  const [togglingSteps, setTogglingSteps] = useState<Set<string>>(new Set());
+
+  // Fetch client data with AbortController for cleanup
   useEffect(() => {
-    loadClient();
+    const controller = new AbortController();
+    let isMounted = true;
+
+    const fetchClient = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const { client: clientData } = await clientsApi.get(clientId);
+
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setClient(clientData);
+        }
+      } catch (err: any) {
+        // Ignore abort errors - they're intentional
+        if (err.name === 'AbortError') return;
+
+        if (isMounted) {
+          setError(err.message || 'Failed to load client');
+          console.error('Client load error:', err);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchClient();
+
+    // Cleanup: prevent memory leak and state updates after unmount
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [clientId]);
 
+  // Manual refresh function
   const loadClient = async () => {
     try {
       setIsLoading(true);
@@ -84,12 +161,19 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ clientId, onBack }
   };
 
   const handleCreateNote = async () => {
-    if (!newNote.trim() || !client) return;
+    const trimmedNote = newNote.trim();
+
+    // Validate: not empty and reasonable length
+    if (!trimmedNote || !client) return;
+    if (trimmedNote.length > 10000) {
+      alert('Note is too long. Please keep it under 10,000 characters.');
+      return;
+    }
 
     try {
       setIsSubmittingNote(true);
       await notesApi.create(clientId, {
-        content: newNote.trim(),
+        content: trimmedNote,
         tags: [],
       });
       setNewNote('');
@@ -97,21 +181,36 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ clientId, onBack }
       await loadClient();
     } catch (err: any) {
       console.error('Failed to create note:', err);
-      alert('Failed to create note: ' + err.message);
+      // Don't expose internal error details to user
+      alert('Failed to create note. Please try again.');
     } finally {
       setIsSubmittingNote(false);
     }
   };
 
+  // Handle progress toggle with race condition prevention
   const handleToggleProgress = async (stepId: string, isCompleted: boolean) => {
     if (!client) return;
+
+    // Prevent double-clicks: check if this step is already being toggled
+    if (togglingSteps.has(stepId)) return;
+
+    // Add step to toggling set
+    setTogglingSteps(prev => new Set(prev).add(stepId));
 
     try {
       await curriculumApi.updateProgress(clientId, stepId, !isCompleted);
       await loadClient();
     } catch (err: any) {
       console.error('Failed to update progress:', err);
-      alert('Failed to update progress: ' + err.message);
+      alert('Failed to update progress. Please try again.');
+    } finally {
+      // Remove step from toggling set
+      setTogglingSteps(prev => {
+        const next = new Set(prev);
+        next.delete(stepId);
+        return next;
+      });
     }
   };
 
@@ -322,21 +421,7 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ clientId, onBack }
                       </div>
                     ) : (
                       client.notes.map(note => (
-                        <div key={note.id} className="group relative pl-4 border-l-2 border-slate-700 hover:border-blue-500 transition-colors">
-                           <div className="flex items-center justify-between mb-1">
-                             <div className="flex items-center gap-2">
-                               <span className="font-medium text-slate-200 text-sm">{note.author?.name || 'Unknown'}</span>
-                               {note.isPinned && <Pin className="w-3 h-3 text-yellow-500" />}
-                             </div>
-                             <span className="text-xs text-slate-500">{new Date(note.createdAt).toLocaleDateString()}</span>
-                           </div>
-                           <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-line">{note.content}</p>
-                           {note.tags && note.tags.length > 0 && (
-                             <div className="flex gap-2 mt-2">
-                               {note.tags.map(t => <span key={t} className="text-xs text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">{t}</span>)}
-                             </div>
-                           )}
-                        </div>
+                        <NoteItem key={note.id} note={note} />
                       ))
                     )}
                   </div>
@@ -353,6 +438,8 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ clientId, onBack }
                       const isFuture = idx > currentStepIdx;
                       const isCompleted = step.isCompleted;
 
+                      const isToggling = togglingSteps.has(step.id);
+
                       return (
                         <div
                           key={step.id}
@@ -360,11 +447,13 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ clientId, onBack }
                             isCurrent
                             ? 'bg-blue-500/5 border-blue-500/50 shadow-md shadow-blue-900/10'
                             : 'bg-transparent border-slate-700/30 opacity-80 hover:opacity-100'
-                          }`}
+                          } ${isToggling ? 'opacity-50 pointer-events-none' : ''}`}
                           onClick={() => handleToggleProgress(step.id, isCompleted)}
                         >
                           <div className="mt-0.5">
-                            {isCompleted ? (
+                            {isToggling ? (
+                              <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                            ) : isCompleted ? (
                               <CheckCircle className="w-6 h-6 text-emerald-500" />
                             ) : isCurrent ? (
                               <div className="w-6 h-6 rounded-full border-2 border-blue-500 flex items-center justify-center">
