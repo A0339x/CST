@@ -21,7 +21,7 @@
 - [x] Notes CRUD endpoints
 - [x] Curriculum progress endpoints
 - [x] Outcomes endpoints
-- [ ] Custom fields endpoints
+- [ ] Custom fields endpoints (admin management)
 - [x] RBAC enforcement (coach sees own clients)
 
 ## Phase 4: Security
@@ -30,6 +30,10 @@
 - [x] Zod validation on all inputs
 - [x] Rate limiting on write endpoints
 - [x] Audit logging
+- [x] JWT secret enforcement in production
+- [x] Slack signature verification in production
+- [x] Global rate limiting
+- [x] Database health check
 
 ## Phase 5: Exports
 - [x] CSV export for clients
@@ -52,13 +56,13 @@
 - [x] Admin sync trigger endpoint
 
 ## Phase 8: Frontend Integration
-- [ ] API client utility
-- [ ] Auth context provider
-- [ ] Update Login page
-- [ ] Update Dashboard page
-- [ ] Update ClientProfile page
-- [ ] Add Admin Users page
-- [ ] Vite proxy configuration
+- [x] API client utility
+- [x] Auth context provider
+- [x] Update Login page
+- [x] Update Dashboard page
+- [x] Update ClientProfile page
+- [x] Add Admin Users page
+- [x] Vite proxy configuration
 
 ## Phase 9: Testing & Docs
 - [ ] Unit tests for services

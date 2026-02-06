@@ -1,14 +1,14 @@
-import React, { useState, useMemo } from 'react';
-import { MOCK_CLIENTS, MOCK_CURRICULUM_STEPS } from '../constants';
-import { Client, ClientStatus, OnboardingStatus } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { ClientStatus, OnboardingStatus } from '../types';
 import { ClientStatusBadge, OnboardingBadge } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
-import { 
-  AlertTriangle, 
-  Search, 
-  ChevronRight, 
-  Star, 
-  CheckCircle2, 
+import { clientsApi, curriculumApi, Client as ApiClient, CurriculumStep } from '../lib/api';
+import {
+  AlertTriangle,
+  Search,
+  ChevronRight,
+  Star,
+  CheckCircle2,
   AlertCircle,
   LayoutGrid,
   List,
@@ -16,19 +16,46 @@ import {
   Ghost,
   Clock,
   PhoneIncoming,
-  ArrowUpDown
+  ArrowUpDown,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
+
+// Extended client type for Dashboard display
+interface DashboardClient {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl: string;
+  coachName: string;
+  status: ClientStatus;
+  riskReason?: string;
+  onboardingStatus: OnboardingStatus;
+  currentStepIndex: number;
+  totalSteps: number;
+  lastContactDate: string;
+  timezone: string;
+  tags: string[];
+  outcomes: {
+    hasReview: boolean;
+    hasReferral: boolean;
+    isInnerCircle: boolean;
+  };
+  curriculum: Array<{ id: string; order: number; title: string; isCompleted: boolean }>;
+  notes: Array<{ id: string; author: string; content: string; timestamp: string; tags: string[] }>;
+}
 
 interface DashboardProps {
   onNavigateToClient: (id: string) => void;
 }
 
 // -- High Density Visual Component --
-const ClientSignalNode: React.FC<{ 
-  client: Client; 
+const ClientSignalNode: React.FC<{
+  client: DashboardClient;
   index: number;
-  onClick: () => void; 
-}> = ({ client, index, onClick }) => {
+  curriculumSteps: string[];
+  onClick: () => void;
+}> = ({ client, index, curriculumSteps, onClick }) => {
   const progressPercent = (client.currentStepIndex / client.totalSteps) * 100;
   
   // -- CALCULATE DERIVED STATES --
@@ -51,7 +78,7 @@ const ClientSignalNode: React.FC<{
 
   // Onboarding Specifics
   if (client.status === ClientStatus.ONBOARDING) {
-    if (client.onboardingStatus === OnboardingStatus.NOT_STARTED) {
+    if (client.onboardingStatus === OnboardingStatus.NOT_BOOKED) {
       // -- ESCALATING URGENCY LOGIC --
       if (daysSinceJoined >= 4) {
         strokeColor = '#dc2626'; // Red 600 - CRITICAL
@@ -74,7 +101,7 @@ const ClientSignalNode: React.FC<{
       strokeColor = '#0ea5e9'; // Sky Blue (Scheduled)
       statusLabel = 'Call Booked';
       urgencyColorClass = 'bg-sky-500';
-    } else if (client.onboardingStatus === OnboardingStatus.OVERDUE) {
+    } else if (client.onboardingStatus === OnboardingStatus.NO_SHOW) {
       strokeColor = '#e11d48'; // Rose 600 (No Show)
       statusLabel = 'No Show';
       urgencyColorClass = 'bg-rose-600';
@@ -168,12 +195,12 @@ const ClientSignalNode: React.FC<{
         {/* Status Indicators (Dots) */}
         
         {/* Red Dot for At Risk or No Show */}
-        {(client.status === ClientStatus.AT_RISK || client.onboardingStatus === OnboardingStatus.OVERDUE) && (
+        {(client.status === ClientStatus.AT_RISK || client.onboardingStatus === OnboardingStatus.NO_SHOW) && (
           <div className="absolute top-0 right-0 w-3 h-3 bg-rose-500 border-2 border-slate-900 rounded-full animate-pulse shadow-rose-900/50 shadow-lg z-20" />
         )}
 
-        {/* Dynamic Dot for Not Started Onboarding (Colors scale with urgency) */}
-        {client.status === ClientStatus.ONBOARDING && client.onboardingStatus === OnboardingStatus.NOT_STARTED && (
+        {/* Dynamic Dot for Not Booked Onboarding (Colors scale with urgency) */}
+        {client.status === ClientStatus.ONBOARDING && client.onboardingStatus === OnboardingStatus.NOT_BOOKED && (
           <div className={`absolute top-0 right-0 w-3 h-3 ${urgencyColorClass} border-2 border-slate-900 rounded-full animate-bounce shadow-lg z-20`} />
         )}
       </div>
@@ -235,7 +262,7 @@ const ClientSignalNode: React.FC<{
                 )}
 
                 {/* Escalating Urgency Message */}
-                {client.status === ClientStatus.ONBOARDING && client.onboardingStatus === OnboardingStatus.NOT_STARTED && (
+                {client.status === ClientStatus.ONBOARDING && client.onboardingStatus === OnboardingStatus.NOT_BOOKED && (
                   <div className={`flex items-start gap-2 text-xs p-2 rounded border ${
                      daysSinceJoined >= 4 ? 'text-rose-400 bg-rose-950/50 border-rose-500/20' :
                      daysSinceJoined >= 2 ? 'text-orange-400 bg-orange-950/50 border-orange-500/20' :
@@ -245,8 +272,8 @@ const ClientSignalNode: React.FC<{
                     <div>
                       <span className="block font-semibold">Joined {daysSinceJoined === 0 ? 'Today' : `${daysSinceJoined} days ago`}</span>
                       <span className="opacity-80">
-                        {daysSinceJoined >= 4 ? 'Critical: Book Immediately.' : 
-                         daysSinceJoined >= 2 ? 'Urgent: Needs Booking.' : 
+                        {daysSinceJoined >= 4 ? 'Critical: Book Immediately.' :
+                         daysSinceJoined >= 2 ? 'Urgent: Needs Booking.' :
                          'Awaiting Booking.'}
                       </span>
                     </div>
@@ -264,7 +291,7 @@ const ClientSignalNode: React.FC<{
                 )}
 
                 {/* Last Contact Info - Show for everyone EXCEPT those waiting to book onboarding (who see the 'Joined X days ago' alert instead) */}
-                {!(client.status === ClientStatus.ONBOARDING && client.onboardingStatus === OnboardingStatus.NOT_STARTED) && (
+                {!(client.status === ClientStatus.ONBOARDING && client.onboardingStatus === OnboardingStatus.NOT_BOOKED) && (
                    <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/50">
                      <span className="text-slate-500 flex items-center gap-1.5">
                        <PhoneIncoming className="w-3 h-3" />
@@ -286,7 +313,7 @@ const ClientSignalNode: React.FC<{
                      <div className="h-1 rounded-full" style={{ width: `${progressPercent}%`, backgroundColor: strokeColor }} />
                    </div>
                    <div className="text-[10px] text-slate-400 truncate">
-                     {MOCK_CURRICULUM_STEPS[client.currentStepIndex]}
+                     {curriculumSteps[client.currentStepIndex] || 'Unknown Step'}
                    </div>
                 </div>
               </div>
@@ -298,49 +325,136 @@ const ClientSignalNode: React.FC<{
 };
 
 
+// Map API client to Dashboard client format
+function mapApiClientToDashboard(client: ApiClient, curriculumSteps: CurriculumStep[]): DashboardClient {
+  // Map onboarding status from API format to frontend enum
+  const mapOnboardingStatus = (status: string): OnboardingStatus => {
+    switch (status) {
+      case 'NOT_BOOKED': return OnboardingStatus.NOT_BOOKED;
+      case 'BOOKED': return OnboardingStatus.BOOKED;
+      case 'COMPLETED': return OnboardingStatus.COMPLETED;
+      case 'NO_SHOW': return OnboardingStatus.NO_SHOW;
+      default: return OnboardingStatus.NOT_BOOKED;
+    }
+  };
+
+  // Map status from API format to frontend enum
+  const mapStatus = (status: string): ClientStatus => {
+    switch (status) {
+      case 'ONBOARDING': return ClientStatus.ONBOARDING;
+      case 'ACTIVE': return ClientStatus.ACTIVE;
+      case 'AT_RISK': return ClientStatus.AT_RISK;
+      case 'COMPLETED': return ClientStatus.COMPLETED;
+      case 'PAUSED': return ClientStatus.PAUSED;
+      default: return ClientStatus.ACTIVE;
+    }
+  };
+
+  return {
+    id: client.id,
+    name: client.name,
+    email: client.email,
+    avatarUrl: '',
+    coachName: client.coach?.name || 'Unassigned',
+    status: mapStatus(client.status),
+    riskReason: client.riskReason || undefined,
+    onboardingStatus: mapOnboardingStatus(client.onboardingStatus),
+    currentStepIndex: client.currentStepIndex || 0,
+    totalSteps: client.totalSteps || curriculumSteps.length || 10,
+    lastContactDate: client.lastContactDate || client.createdAt,
+    timezone: client.timezone || 'UTC',
+    tags: client.tags || [],
+    outcomes: client.outcomes || { hasReview: false, hasReferral: false, isInnerCircle: false },
+    curriculum: curriculumSteps.map((step, idx) => ({
+      id: step.id,
+      order: step.order,
+      title: step.title,
+      isCompleted: idx < (client.currentStepIndex || 0),
+    })),
+    notes: [],
+  };
+}
+
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
   const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>('GRID');
   const [filter, setFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState<string>('PRIORITY');
   const [searchTerm, setSearchTerm] = useState('');
 
+  // API state
+  const [clients, setClients] = useState<DashboardClient[]>([]);
+  const [curriculumSteps, setCurriculumSteps] = useState<CurriculumStep[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch data on mount
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Fetch clients and curriculum in parallel
+      const [clientsResponse, curriculumResponse] = await Promise.all([
+        clientsApi.list({ limit: 500 }), // Fetch all clients
+        curriculumApi.list(),
+      ]);
+
+      setCurriculumSteps(curriculumResponse.steps);
+
+      // Map API clients to dashboard format
+      const mappedClients = clientsResponse.clients.map((c) =>
+        mapApiClientToDashboard(c, curriculumResponse.steps)
+      );
+      setClients(mappedClients);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load data');
+      console.error('Dashboard load error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Computed Stats
-  const atRiskCount = MOCK_CLIENTS.filter(c => c.status === ClientStatus.AT_RISK).length;
-  
+  const atRiskCount = clients.filter(c => c.status === ClientStatus.AT_RISK).length;
+
   // Revised: "Onboarding Lag" now focuses on No Shows or unbooked
-  const onboardingActionCount = MOCK_CLIENTS.filter(c => 
-    c.status === ClientStatus.ONBOARDING && 
-    (c.onboardingStatus === OnboardingStatus.OVERDUE || c.onboardingStatus === OnboardingStatus.NOT_STARTED)
+  const onboardingActionCount = clients.filter(c =>
+    c.status === ClientStatus.ONBOARDING &&
+    (c.onboardingStatus === OnboardingStatus.NO_SHOW || c.onboardingStatus === OnboardingStatus.NOT_BOOKED)
   ).length;
 
-  const activeCount = MOCK_CLIENTS.filter(c => c.status === ClientStatus.ACTIVE).length;
+  const activeCount = clients.filter(c => c.status === ClientStatus.ACTIVE).length;
 
   // -- PRIORITY SCORING HELPER --
   // Lower score = Higher Priority in default sort
-  const getPriorityScore = (c: Client) => {
-    // 1. Overdue Onboarding (No Shows) are critical errors
-    if (c.onboardingStatus === OnboardingStatus.OVERDUE) return 0; 
-    
+  const getPriorityScore = (c: DashboardClient) => {
+    // 1. No Show Onboarding are critical errors
+    if (c.onboardingStatus === OnboardingStatus.NO_SHOW) return 0;
+
     // 2. At Risk clients need saving
-    if (c.status === ClientStatus.AT_RISK) return 1; 
-    
+    if (c.status === ClientStatus.AT_RISK) return 1;
+
     // 3. Unbooked Onboarding (escalates by days waiting)
-    if (c.status === ClientStatus.ONBOARDING && c.onboardingStatus === OnboardingStatus.NOT_STARTED) {
+    if (c.status === ClientStatus.ONBOARDING && c.onboardingStatus === OnboardingStatus.NOT_BOOKED) {
        const days = Math.floor((new Date().getTime() - new Date(c.lastContactDate).getTime()) / (1000 * 3600 * 24));
        if (days >= 4) return 1.1; // Critical
        if (days >= 2) return 1.5; // Urgent
        return 2; // Normal
     }
 
-    if (c.onboardingStatus === OnboardingStatus.BOOKED) return 3; 
+    if (c.onboardingStatus === OnboardingStatus.BOOKED) return 3;
     if (c.status === ClientStatus.ACTIVE) return 4;
     return 5;
   };
 
   const filteredClients = useMemo(() => {
-    let result = MOCK_CLIENTS.filter(client => {
+    let result = clients.filter(client => {
       const matchesSearch = client.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesFilter = filter === 'ALL' || 
+      const matchesFilter = filter === 'ALL' ||
         (filter === 'AT_RISK' && client.status === ClientStatus.AT_RISK) ||
         (filter === 'ONBOARDING' && client.status === ClientStatus.ONBOARDING);
       return matchesSearch && matchesFilter;
@@ -350,13 +464,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
     result.sort((a, b) => {
       switch (sortBy) {
         case 'NEEDS_ONBOARDING':
-            // 1. Prioritize Clients who are Onboarding AND Not Started
-            const aNeed = a.status === ClientStatus.ONBOARDING && a.onboardingStatus === OnboardingStatus.NOT_STARTED;
-            const bNeed = b.status === ClientStatus.ONBOARDING && b.onboardingStatus === OnboardingStatus.NOT_STARTED;
-            
+            // 1. Prioritize Clients who are Onboarding AND Not Booked
+            const aNeed = a.status === ClientStatus.ONBOARDING && a.onboardingStatus === OnboardingStatus.NOT_BOOKED;
+            const bNeed = b.status === ClientStatus.ONBOARDING && b.onboardingStatus === OnboardingStatus.NOT_BOOKED;
+
             if (aNeed && !bNeed) return -1;
             if (!aNeed && bNeed) return 1;
-            
+
             // If both need onboarding, sort by urgency (days waiting) via Priority Score
             // If neither, fallback to priority score
             return getPriorityScore(a) - getPriorityScore(b);
@@ -383,12 +497,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
             return 0;
       }
     });
-    
+
     return result;
-  }, [filter, searchTerm, viewMode, sortBy]);
+  }, [clients, filter, searchTerm, sortBy]);
+
+  // Get curriculum step titles for display
+  const curriculumStepTitles = curriculumSteps.map(s => s.title);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        <p className="text-slate-400">Loading clients...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <AlertCircle className="w-12 h-12 text-rose-500" />
+        <p className="text-rose-400">{error}</p>
+        <button
+          onClick={loadData}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Header with Refresh */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+        <button
+          onClick={loadData}
+          className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Refresh
+        </button>
+      </div>
+
       {/* Alert Panel */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-l-4 border-l-rose-500 bg-gradient-to-r from-rose-500/5 to-slate-800 p-4">
@@ -520,11 +676,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
           {viewMode === 'GRID' ? (
              <div className="grid grid-cols-[repeat(auto-fill,minmax(70px,1fr))] gap-3 pb-20">
                {filteredClients.map((client, idx) => (
-                 <ClientSignalNode 
-                    key={client.id} 
-                    client={client} 
+                 <ClientSignalNode
+                    key={client.id}
+                    client={client}
                     index={idx}
-                    onClick={() => onNavigateToClient(client.id)} 
+                    curriculumSteps={curriculumStepTitles}
+                    onClick={() => onNavigateToClient(client.id)}
                  />
                ))}
              </div>
