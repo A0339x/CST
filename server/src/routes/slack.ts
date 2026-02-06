@@ -22,8 +22,13 @@ const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || '';
  */
 function verifySlackSignature(req: Request): boolean {
   if (!SLACK_SIGNING_SECRET) {
-    console.warn('SLACK_SIGNING_SECRET not configured - skipping verification');
-    return true; // Allow in dev mode
+    // SECURITY: In production, reject requests if signing secret is not configured
+    if (process.env.NODE_ENV === 'production') {
+      console.error('SLACK_SIGNING_SECRET not configured - rejecting request');
+      return false;
+    }
+    console.warn('SLACK_SIGNING_SECRET not configured - skipping verification (dev mode)');
+    return true;
   }
 
   const timestamp = req.headers['x-slack-request-timestamp'] as string;

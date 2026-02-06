@@ -16,7 +16,12 @@ declare global {
   }
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+// SECURITY: Fail in production if JWT_SECRET is not set
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET environment variable is required in production');
+}
+const EFFECTIVE_JWT_SECRET = JWT_SECRET || 'dev-secret-change-in-production';
 
 export interface JWTPayload {
   userId: string;
@@ -45,7 +50,7 @@ export async function authenticate(
     const token = authHeader.substring(7);
 
     // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+    const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET) as JWTPayload;
 
     // Fetch user from database to ensure they still exist and are active
     const user = await prisma.user.findUnique({
@@ -98,7 +103,7 @@ export function generateToken(user: { id: string; email: string; role: string })
       email: user.email,
       role: user.role,
     },
-    JWT_SECRET,
+    EFFECTIVE_JWT_SECRET,
     { expiresIn }
   );
 }
@@ -120,7 +125,7 @@ export async function optionalAuth(
     }
 
     const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+    const decoded = jwt.verify(token, EFFECTIVE_JWT_SECRET) as JWTPayload;
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },

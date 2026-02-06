@@ -17,6 +17,7 @@ import { scheduleHeartbeat } from './slack/heartbeat.js';
 // Middleware imports
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { generalLimiter } from './middleware/rateLimit.js';
 
 // Initialize Prisma
 export const prisma = new PrismaClient();
@@ -56,13 +57,30 @@ app.use(express.urlencoded({ extended: true }));
 // Request logging
 app.use(requestLogger);
 
+// Global rate limiting (100 requests per minute)
+app.use('/api', generalLimiter);
+
 // ===========================================
 // API ROUTES
 // ===========================================
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check (includes database connectivity)
+app.get('/api/health', async (req, res) => {
+  try {
+    // Check database connectivity
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Auth routes (no auth required)
