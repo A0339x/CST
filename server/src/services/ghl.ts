@@ -137,7 +137,31 @@ export async function syncFromGHL(): Promise<SyncResult> {
         // Fetch appointments for this contact
         const appointments = await fetchGHLAppointments(contact.id);
 
-        // Find the most recent completed appointment
+        // Upsert each appointment into the database
+        for (const appt of appointments) {
+          await prisma.appointment.upsert({
+            where: { ghlAppointmentId: appt.id },
+            update: {
+              title: appt.title || '',
+              status: appt.status,
+              startTime: new Date(appt.startTime),
+              endTime: new Date(appt.endTime),
+              calendarId: appt.calendarId || null,
+            },
+            create: {
+              ghlAppointmentId: appt.id,
+              clientId: client.id,
+              title: appt.title || '',
+              status: appt.status,
+              startTime: new Date(appt.startTime),
+              endTime: new Date(appt.endTime),
+              calendarId: appt.calendarId || null,
+            },
+          });
+          result.appointmentsSynced++;
+        }
+
+        // Find the most recent completed appointment for lastContactDate
         const completedAppointments = appointments
           .filter((a) => a.status === 'confirmed' || a.status === 'completed')
           .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
@@ -151,7 +175,6 @@ export async function syncFromGHL(): Promise<SyncResult> {
 
         if (lastAppointment) {
           updateData.lastContactDate = new Date(lastAppointment.startTime);
-          result.appointmentsSynced++;
         }
 
         if (contact.timezone) {
@@ -227,6 +250,30 @@ export async function syncClientWithGHL(clientId: string): Promise<boolean> {
   }
 
   const appointments = await fetchGHLAppointments(contact.id);
+
+  // Upsert each appointment
+  for (const appt of appointments) {
+    await prisma.appointment.upsert({
+      where: { ghlAppointmentId: appt.id },
+      update: {
+        title: appt.title || '',
+        status: appt.status,
+        startTime: new Date(appt.startTime),
+        endTime: new Date(appt.endTime),
+        calendarId: appt.calendarId || null,
+      },
+      create: {
+        ghlAppointmentId: appt.id,
+        clientId,
+        title: appt.title || '',
+        status: appt.status,
+        startTime: new Date(appt.startTime),
+        endTime: new Date(appt.endTime),
+        calendarId: appt.calendarId || null,
+      },
+    });
+  }
+
   const lastAppointment = appointments
     .filter((a) => a.status === 'confirmed' || a.status === 'completed')
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0];

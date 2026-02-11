@@ -24,7 +24,8 @@ import {
   curriculumApi,
   ClientDetail,
   Note,
-  CurriculumProgress
+  CurriculumProgress,
+  Appointment
 } from '../lib/api';
 
 // Configure DOMPurify for note content - allow basic formatting only
@@ -340,6 +341,86 @@ export const ClientProfile: React.FC<ClientProfileProps> = ({ clientId, onBack }
                 + Add
               </button>
             </div>
+          </Card>
+
+          <Card>
+            <CardHeader title="Meetings" />
+            {(() => {
+              const appointments = client.appointments || [];
+              const now = new Date();
+              const upcoming = appointments.filter(a => new Date(a.startTime) >= now);
+              const past = appointments.filter(a => new Date(a.startTime) < now);
+              // Upcoming sorted soonest-first, past sorted most-recent-first
+              upcoming.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+              past.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+
+              if (appointments.length === 0) {
+                return (
+                  <div className="text-center py-6 text-slate-500 text-sm">
+                    No meetings synced yet.
+                  </div>
+                );
+              }
+
+              const AppointmentItem = ({ appt }: { appt: Appointment }) => {
+                const start = new Date(appt.startTime);
+                const end = new Date(appt.endTime);
+                const isUpcoming = start >= now;
+                const statusColors: Record<string, string> = {
+                  confirmed: 'bg-blue-500/20 text-blue-400',
+                  completed: 'bg-emerald-500/20 text-emerald-400',
+                  cancelled: 'bg-slate-500/20 text-slate-400',
+                  no_show: 'bg-rose-500/20 text-rose-400',
+                };
+                const colorClass = statusColors[appt.status] || 'bg-slate-500/20 text-slate-400';
+
+                return (
+                  <div className={`flex items-start gap-3 py-2.5 ${isUpcoming ? '' : 'opacity-70'}`}>
+                    <div className="mt-0.5">
+                      <CalendarIcon className={`w-4 h-4 ${isUpcoming ? 'text-blue-400' : 'text-slate-500'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-sm font-medium text-slate-200 truncate">
+                          {appt.title || 'Meeting'}
+                        </span>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${colorClass}`}>
+                          {appt.status}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {start.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                        {' '}
+                        {start.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                        {' - '}
+                        {end.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <div className="space-y-3">
+                  {upcoming.length > 0 && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-blue-400 font-semibold mb-1">Upcoming</div>
+                      <div className="divide-y divide-slate-700/50">
+                        {upcoming.map(a => <AppointmentItem key={a.id} appt={a} />)}
+                      </div>
+                    </div>
+                  )}
+                  {past.length > 0 && (
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold mb-1">{upcoming.length > 0 ? 'Past' : 'History'}</div>
+                      <div className="divide-y divide-slate-700/50">
+                        {past.map(a => <AppointmentItem key={a.id} appt={a} />)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </Card>
         </div>
 
