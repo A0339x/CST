@@ -1,5 +1,14 @@
 # CLAUDE.md
 
+## Required Reading
+
+Before starting any work, review these two documents:
+
+1. **`Claude Prompt.md`** — Master governance prompt. Defines the mandatory 4-step workflow (Research → Plan → Implement → Commit), security rules, product requirements, Slack heartbeat spec, and the 10-component response structure. All work must follow this workflow.
+2. **`TODO.md`** — Phased task tracker. Shows completed and remaining work. Update this file after completing tasks.
+
+Also check `progress.txt` and `status.json` for session continuity context.
+
 ## Project Overview
 
 Client Success Tracker (CST) — a command center dashboard for mastermind coaches to track client progress, manage notes, monitor at-risk clients, and integrate with Slack and Go High Level CRM.
