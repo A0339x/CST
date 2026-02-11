@@ -200,6 +200,9 @@ router.get(
         customFieldValues: {
           include: { fieldDef: true },
         },
+        appointments: {
+          orderBy: { startTime: 'desc' },
+        },
       },
     });
 
@@ -252,6 +255,13 @@ router.get(
         name: v.fieldDef.name,
         type: v.fieldDef.type,
         value: v.value,
+      })),
+      appointments: client.appointments.map((a) => ({
+        id: a.id,
+        title: a.title,
+        status: a.status,
+        startTime: a.startTime,
+        endTime: a.endTime,
       })),
     };
 

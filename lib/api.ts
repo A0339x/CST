@@ -166,6 +166,7 @@ export interface ClientDetail extends Client {
   outcome: Outcome | null;
   curriculum: CurriculumProgress[];
   customFields: CustomField[];
+  appointments: Appointment[];
 }
 
 export interface Note {
@@ -201,6 +202,14 @@ export interface CustomField {
   name: string;
   type: string;
   value: string;
+}
+
+export interface Appointment {
+  id: string;
+  title: string;
+  status: string;
+  startTime: string;
+  endTime: string;
 }
 
 export interface ClientsListResponse {
