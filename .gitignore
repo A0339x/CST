@@ -36,3 +36,9 @@ server/prisma/*.db-journal
 
 # Server build output
 server/dist
+
+# Client data files (sensitive — do not commit)
+Client-data*.xlsx
+Client-data*.json
+sheets-export/
+nul
