@@ -50,7 +50,7 @@ function showAddEntryDialog() {
       margin-top: 12px;
       margin-bottom: 4px;
     }
-    input[type="text"], textarea, select {
+    input[type="text"], input[type="date"], textarea, select {
       width: 100%;
       box-sizing: border-box;
       padding: 8px;
@@ -58,13 +58,25 @@ function showAddEntryDialog() {
       border-radius: 4px;
       font-size: 14px;
     }
-    input[readonly] {
-      background: #f1f3f4;
-      color: #5f6368;
-    }
     textarea {
       height: 120px;
       resize: vertical;
+    }
+    .notes-wrap {
+      position: relative;
+    }
+    .notes-loading {
+      display: none;
+      position: absolute;
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #888;
+      font-style: italic;
+      pointer-events: none;
+      text-align: center;
+      padding: 8px;
     }
     .btn-row {
       display: flex;
@@ -89,24 +101,32 @@ function showAddEntryDialog() {
     }
     .btn-submit:hover { background: #1557b0; }
     .status { margin-top: 8px; color: #188038; font-size: 13px; min-height: 18px; }
+    .amend  { color: #e37400; }
     .error  { color: #d93025; }
   </style>
 </head>
 <body>
   <label>Client</label>
-  <select id="client">
+  <select id="client" onchange="onClientChange()">
     <option value="">— Select client —</option>
     ${clientNames.map(n => `<option value="${escapeHtml_(n)}">${escapeHtml_(n)}</option>`).join("\n")}
   </select>
 
   <label>Date</label>
-  <input type="text" id="date" value="${today}" readonly>
+  <input type="date" id="date" value="${today}" onchange="loadExistingEntry()">
 
   <label>Coach</label>
-  <input type="text" id="coach" value="${escapeHtml_(lastCoach)}" placeholder="Your name">
+  <select id="coach">
+    <option value="">— Select coach —</option>
+    <option value="Greg Esman" ${lastCoach === "Greg Esman" ? "selected" : ""}>Greg Esman</option>
+    <option value="Shane" ${lastCoach === "Shane" ? "selected" : ""}>Shane</option>
+  </select>
 
   <label>Notes</label>
-  <textarea id="notes" placeholder="Enter call notes…"></textarea>
+  <div class="notes-wrap">
+    <textarea id="notes" disabled></textarea>
+    <div class="notes-loading" id="notes-loading"></div>
+  </div>
 
   <div class="status" id="status"></div>
 
@@ -116,6 +136,127 @@ function showAddEntryDialog() {
   </div>
 
   <script>
+    const waitingMessages = [
+      "Pick a client. It's a dropdown. You've done this before.",
+      "No client, no notes. This isn't complicated.",
+      "The client dropdown is literally right there.",
+      "Still waiting. Still no client selected. Interesting choice.",
+      "At some point you're going to have to pick a client.",
+      "I built all this and you won't even select a client.",
+      "A client. Pick one. Any one. There are 260 of them.",
+      "Client. Dropdown. Click. In that order.",
+      "We can't take notes on nobody. Select a client.",
+      "I'm not mad. I'm just not doing anything until you pick a client.",
+      "Go on then. Pick a client. I'll wait here.",
+      "This is the part where you select a client.",
+      "You opened this dialog to log a client note. So... pick a client.",
+      "260 clients and you haven't picked one yet. Bold strategy.",
+      "The client dropdown isn't going to click itself.",
+      "Friendly reminder: you need a client before you can log a note.",
+      "No client selected. That's not a note, that's just a blank box.",
+      "There's a whole list of clients up there. Take your pick.",
+      "Genuinely unsure what you're waiting for. A client, presumably.",
+      "Every second without a client selected is a second wasted. Just saying.",
+      "The client list is alphabetical. That should help narrow it down.",
+      "You know who has a client selected? People who are done with this dialog.",
+      "Select a client. Your future self will thank you.",
+      "No client, no entry. No entry, no record. No record, no memory. Pick a client.",
+      "I've seen people select clients much faster than this.",
+      "A client selection is all that stands between you and a very empty notes field.",
+      "If you're looking for the client dropdown, it's above this box. You're welcome.",
+      "This is awkward for both of us. Select a client.",
+      "Still here. Still waiting. Still no client. We're doing great.",
+      "The correct next step is to select a client. Just in case that wasn't clear.",
+      "I don't want to tell you how to do your job, but... select a client.",
+      "At this rate the client is going to call you before you log a note.",
+      "Pick a client. Any client. Preferably one you actually spoke to.",
+    ];
+    let waitingMsgIndex = Math.floor(Math.random() * waitingMessages.length);
+    let waitingInterval = null;
+
+    function startWaitingMessages() {
+      const loadingEl = document.getElementById("notes-loading");
+      loadingEl.style.display = "flex";
+      loadingEl.textContent = waitingMessages[waitingMsgIndex % waitingMessages.length];
+      waitingInterval = setInterval(function() {
+        waitingMsgIndex++;
+        loadingEl.textContent = waitingMessages[waitingMsgIndex % waitingMessages.length];
+      }, 7000);
+    }
+
+    function stopWaitingMessages() {
+      if (waitingInterval) { clearInterval(waitingInterval); waitingInterval = null; }
+      document.getElementById("notes-loading").style.display = "none";
+    }
+
+    function onClientChange() {
+      const notesEl = document.getElementById("notes");
+      const client  = document.getElementById("client").value;
+      if (!client) {
+        notesEl.disabled = true;
+        notesEl.placeholder = "";
+      } else {
+        stopWaitingMessages();
+        loadExistingEntry();
+      }
+    }
+
+    const loadingMessages = [
+      "Asking the spreadsheet nicely...",
+      "Checking if past-you was thorough...",
+      "Consulting the archive...",
+      "Rummaging through the notes...",
+      "Your past self is typing...",
+      "Interrogating the database...",
+      "We wrote it down. Somewhere.",
+      "One sec, bribing the servers..."
+    ];
+    let loadingMsgIndex = Math.floor(Math.random() * loadingMessages.length);
+
+    function loadExistingEntry() {
+      const client = document.getElementById("client").value;
+      const date   = document.getElementById("date").value;
+      const statusEl  = document.getElementById("status");
+      const notesEl   = document.getElementById("notes");
+      const loadingEl = document.getElementById("notes-loading");
+
+      if (!client || !date) {
+        statusEl.textContent = "";
+        statusEl.className = "status";
+        return;
+      }
+
+      loadingEl.textContent = loadingMessages[loadingMsgIndex % loadingMessages.length];
+      loadingMsgIndex++;
+      loadingEl.style.display = "flex";
+      notesEl.placeholder = "";
+      notesEl.disabled = true;
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          loadingEl.style.display = "none";
+          if (result) {
+            notesEl.value = result.notes || "";
+            if (result.coach) document.getElementById("coach").value = result.coach;
+            statusEl.textContent = "Existing note loaded — amending";
+            statusEl.className = "status amend";
+          } else {
+            notesEl.value = "";
+            statusEl.textContent = "";
+            statusEl.className = "status";
+          }
+          notesEl.disabled = false;
+          notesEl.placeholder = "Enter call notes…";
+          notesEl.focus();
+        })
+        .withFailureHandler(function() {
+          loadingEl.style.display = "none";
+          notesEl.disabled = false;
+          notesEl.placeholder = "Enter call notes…";
+        })
+        .getEntryForDate(client, date);
+    }
+
     function submitEntry() {
       const client = document.getElementById("client").value.trim();
       const date   = document.getElementById("date").value.trim();
@@ -130,8 +271,8 @@ function showAddEntryDialog() {
       btn.textContent = "Saving…";
 
       google.script.run
-        .withSuccessHandler(function() {
-          showStatus("Entry added successfully!");
+        .withSuccessHandler(function(wasAmended) {
+          showStatus(wasAmended ? "Note updated successfully!" : "Entry added successfully!");
           setTimeout(function() { google.script.host.close(); }, 1200);
         })
         .withFailureHandler(function(err) {
@@ -147,6 +288,8 @@ function showAddEntryDialog() {
       el.textContent = msg;
       el.className = "status" + (isError ? " error" : "");
     }
+
+    startWaitingMessages();
   </script>
 </body>
 </html>
@@ -159,15 +302,41 @@ function showAddEntryDialog() {
 }
 
 /**
- * Called from the dialog. Appends a row to Notes Log and updates Clients sheet.
+ * Called from the dialog. Updates an existing Notes Log row in-place if one exists
+ * for clientName + dateStr, otherwise appends a new row. Returns true if amended.
  */
 function addEntry(clientName, dateStr, notes, coach) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  // Append to Notes Log
   const logSheet = ss.getSheetByName("Notes Log");
   if (!logSheet) throw new Error('Sheet "Notes Log" not found.');
-  logSheet.appendRow([clientName, dateStr, notes, coach || ""]);
+
+  const lastRow = logSheet.getLastRow();
+  let amended = false;
+
+  if (lastRow >= 2) {
+    const data = logSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    const targetClient = clientName.trim().toLowerCase();
+    const targetDate   = dateStr.trim();
+    let matchRow = -1;
+
+    for (let i = data.length - 1; i >= 0; i--) {
+      const rowClient = String(data[i][0]).trim().toLowerCase();
+      const rowDate   = normalizeDate_(data[i][1]);
+      if (rowClient === targetClient && rowDate === targetDate) {
+        matchRow = i + 2; // 1-based, offset by header row
+        break;
+      }
+    }
+
+    if (matchRow > 0) {
+      logSheet.getRange(matchRow, 3, 1, 2).setValues([[notes, coach || ""]]);
+      amended = true;
+    }
+  }
+
+  if (!amended) {
+    logSheet.appendRow([clientName, dateStr, notes, coach || ""]);
+  }
 
   // Update Clients sheet: Next Step (Col E) and Last Contact Date (Col F) — single atomic write
   const clientsSheet = ss.getSheetByName("Clients");
@@ -185,6 +354,36 @@ function addEntry(clientName, dateStr, notes, coach) {
   if (coach) {
     PropertiesService.getUserProperties().setProperty("lastCoach", coach);
   }
+
+  return amended;
+}
+
+/**
+ * Returns { notes, coach } for the most recent Notes Log row matching clientName + dateStr,
+ * or null if none found. Called from the dialog when client/date change.
+ */
+function getEntryForDate(clientName, dateStr) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Notes Log");
+  if (!sheet) return null;
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const targetClient = clientName.trim().toLowerCase();
+  const targetDate   = dateStr.trim();
+  let match = null;
+
+  for (let i = 0; i < data.length; i++) {
+    const rowClient = String(data[i][0]).trim().toLowerCase();
+    const rowDate   = normalizeDate_(data[i][1]);
+    if (rowClient === targetClient && rowDate === targetDate) {
+      match = { notes: String(data[i][2] || "").trim(), coach: String(data[i][3] || "").trim() };
+    }
+  }
+
+  return match; // null if no match; last match wins if duplicates exist
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +582,24 @@ function findClientRow_(sheet, clientName) {
     }
   }
   return -1;
+}
+
+/**
+ * Normalizes a cell value (Date object or string) to a yyyy-MM-dd string.
+ */
+function normalizeDate_(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  const s = String(value || "").trim();
+  // Already yyyy-MM-dd
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Try parsing other formats
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  return s;
 }
 
 /**
