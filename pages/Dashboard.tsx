@@ -2,7 +2,8 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ClientStatus, OnboardingStatus } from '../types';
 import { ClientStatusBadge, OnboardingBadge } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
-import { clientsApi, curriculumApi, Client as ApiClient, CurriculumStep } from '../lib/api';
+import { clientsApi, curriculumApi, usersApi, Client as ApiClient, CurriculumStep, UserWithStats } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
 import {
   AlertTriangle,
   Search,
@@ -18,7 +19,8 @@ import {
   PhoneIncoming,
   ArrowUpDown,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Users
 } from 'lucide-react';
 
 // Extended client type for Dashboard display
@@ -376,18 +378,20 @@ function mapApiClientToDashboard(client: ApiClient, curriculumSteps: CurriculumS
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
+  const { user } = useAuth();
   const [viewMode, setViewMode] = useState<'GRID' | 'LIST'>('GRID');
   const [filter, setFilter] = useState('ALL');
   const [sortBy, setSortBy] = useState<string>('PRIORITY');
   const [searchTerm, setSearchTerm] = useState('');
+  const [coachFilter, setCoachFilter] = useState<string>('ALL'); // 'ALL', 'MY_CLIENTS', or a specific coach ID
 
   // API state
   const [clients, setClients] = useState<DashboardClient[]>([]);
   const [curriculumSteps, setCurriculumSteps] = useState<CurriculumStep[]>([]);
+  const [coaches, setCoaches] = useState<UserWithStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch data on mount
   // Fetch data with AbortController for cleanup
   useEffect(() => {
     const controller = new AbortController();
@@ -398,15 +402,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
         setIsLoading(true);
         setError(null);
 
-        // Fetch clients and curriculum in parallel
-        const [clientsResponse, curriculumResponse] = await Promise.all([
-          clientsApi.list({ limit: 500 }),
+        // Build client filter params
+        const clientParams: any = { limit: 500 };
+        if (coachFilter === 'MY_CLIENTS') {
+          clientParams.myClientsOnly = 'true';
+        } else if (coachFilter !== 'ALL') {
+          clientParams.coachId = coachFilter;
+        }
+
+        // Fetch clients, curriculum, and coaches in parallel
+        const [clientsResponse, curriculumResponse, coachesResponse] = await Promise.all([
+          clientsApi.list(clientParams),
           curriculumApi.list(),
+          usersApi.list().catch(() => ({ users: [] })), // Gracefully handle if user can't fetch coaches
         ]);
 
         // Only update state if component is still mounted
         if (isMounted) {
           setCurriculumSteps(curriculumResponse.steps);
+          setCoaches(coachesResponse.users.filter(u => u.role === 'COACH' || u.role === 'ADMIN'));
 
           // Map API clients to dashboard format
           const mappedClients = clientsResponse.clients.map((c) =>
@@ -436,7 +450,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
       isMounted = false;
       controller.abort();
     };
-  }, []);
+  }, [coachFilter]);
 
   // Manual refresh function
   const loadData = async () => {
@@ -444,12 +458,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
       setIsLoading(true);
       setError(null);
 
-      const [clientsResponse, curriculumResponse] = await Promise.all([
-        clientsApi.list({ limit: 500 }),
+      // Build client filter params
+      const clientParams: any = { limit: 500 };
+      if (coachFilter === 'MY_CLIENTS') {
+        clientParams.myClientsOnly = 'true';
+      } else if (coachFilter !== 'ALL') {
+        clientParams.coachId = coachFilter;
+      }
+
+      const [clientsResponse, curriculumResponse, coachesResponse] = await Promise.all([
+        clientsApi.list(clientParams),
         curriculumApi.list(),
+        usersApi.list().catch(() => ({ users: [] })),
       ]);
 
       setCurriculumSteps(curriculumResponse.steps);
+      setCoaches(coachesResponse.users.filter(u => u.role === 'COACH' || u.role === 'ADMIN'));
 
       const mappedClients = clientsResponse.clients.map((c) =>
         mapApiClientToDashboard(c, curriculumResponse.steps)
@@ -659,6 +683,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
           </div>
 
           <div className="flex items-center gap-3 w-full xl:w-auto">
+             {/* Coach Filter Dropdown */}
+            <div className="relative group min-w-[160px]">
+               <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 group-hover:text-blue-400 transition-colors z-10" />
+               <select
+                  value={coachFilter}
+                  onChange={(e) => setCoachFilter(e.target.value)}
+                  className="w-full appearance-none bg-slate-900 border border-slate-700 rounded-md pl-9 pr-8 py-1.5 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer hover:border-slate-600 transition-colors"
+               >
+                  <option value="ALL">All Coaches</option>
+                  <option value="MY_CLIENTS">My Clients</option>
+                  {coaches.map((coach) => (
+                    <option key={coach.id} value={coach.id}>
+                      {coach.name} ({coach.clientCount || 0})
+                    </option>
+                  ))}
+               </select>
+               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                 <svg className="w-2 h-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+               </div>
+            </div>
+
              {/* Sort Dropdown */}
             <div className="relative group min-w-[180px]">
                <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 group-hover:text-blue-400 transition-colors z-10" />
