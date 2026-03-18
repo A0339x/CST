@@ -11,17 +11,14 @@ datasource db {
 // USER & AUTHENTICATION
 // ============================================
 
-enum Role {
-  ADMIN
-  COACH
-}
+// Role: ADMIN, COACH (stored as String for SQLite compatibility)
 
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
   name         String
-  role         Role     @default(COACH)
+  role         String   @default("COACH") // ADMIN or COACH
   avatar       String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
@@ -40,39 +37,27 @@ model User {
 // CLIENT MANAGEMENT
 // ============================================
 
-enum ClientStatus {
-  ONBOARDING
-  ACTIVE
-  AT_RISK
-  COMPLETED
-  PAUSED
-}
-
-enum OnboardingStatus {
-  NOT_BOOKED
-  BOOKED
-  COMPLETED
-  NO_SHOW
-}
+// ClientStatus: ONBOARDING, ACTIVE, AT_RISK, COMPLETED, PAUSED
+// OnboardingStatus: NOT_BOOKED, BOOKED, COMPLETED, NO_SHOW
 
 model Client {
-  id                 String           @id @default(cuid())
+  id                 String   @id @default(cuid())
   name               String
-  email              String           @unique
-  timezone           String           @default("UTC")
-  status             ClientStatus     @default(ONBOARDING)
+  email              String   @unique
+  timezone           String   @default("UTC")
+  status             String   @default("ONBOARDING") // ClientStatus
   riskReason         String?
-  onboardingStatus   OnboardingStatus @default(NOT_BOOKED)
+  onboardingStatus   String   @default("NOT_BOOKED") // OnboardingStatus
   onboardingDateTime DateTime?
   lastContactDate    DateTime?
   nextActionDate     DateTime?
-  ghlContactId       String?          // Go High Level contact ID
-  isDeleted          Boolean          @default(false)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  ghlContactId       String?  // Go High Level contact ID
+  isDeleted          Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   // Relations
-  coach              User             @relation(fields: [coachId], references: [id])
+  coach              User     @relation(fields: [coachId], references: [id])
   coachId            String
   notes              Note[]
   progress           ClientProgress[]
@@ -154,36 +139,30 @@ model ClientProgress {
 // OUTCOMES
 // ============================================
 
-enum OutcomeStatus {
-  POTENTIAL
-  NOT_YET
-  MAYBE_LATER
-  IN_PROGRESS
-  DONE
-}
+// OutcomeStatus: POTENTIAL, NOT_YET, MAYBE_LATER, IN_PROGRESS, DONE
 
 model Outcome {
-  id                  String        @id @default(cuid())
+  id                  String   @id @default(cuid())
 
   // Reviews
-  reviewStatus        OutcomeStatus @default(POTENTIAL)
-  reviewDone          Boolean       @default(false)
+  reviewStatus        String   @default("POTENTIAL") // OutcomeStatus
+  reviewDone          Boolean  @default(false)
 
   // Endorsements (Referrals)
-  endorsementStatus   OutcomeStatus @default(POTENTIAL)
-  endorsementCount    Int           @default(0)
-  endorsementDone     Boolean       @default(false)
+  endorsementStatus   String   @default("POTENTIAL") // OutcomeStatus
+  endorsementCount    Int      @default(0)
+  endorsementDone     Boolean  @default(false)
 
   // Inner Circle
-  innerCircleStatus   OutcomeStatus @default(POTENTIAL)
-  innerCircleDone     Boolean       @default(false)
+  innerCircleStatus   String   @default("POTENTIAL") // OutcomeStatus
+  innerCircleDone     Boolean  @default(false)
 
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   // Relations
-  client              Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  clientId            String        @unique
+  client              Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId            String   @unique
 
   @@map("outcomes")
 }
@@ -192,21 +171,16 @@ model Outcome {
 // CUSTOM FIELDS
 // ============================================
 
-enum FieldType {
-  TEXT
-  NUMBER
-  BOOLEAN
-  DROPDOWN
-}
+// FieldType: TEXT, NUMBER, BOOLEAN, DROPDOWN
 
 model CustomFieldDef {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   name      String
-  type      FieldType
-  options   String?   // JSON array for dropdown options
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  type      String   // FieldType
+  options   String?  // JSON array for dropdown options
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   createdBy   User               @relation(fields: [createdById], references: [id])
@@ -236,32 +210,22 @@ model CustomFieldValue {
 // AUDIT LOG
 // ============================================
 
-enum AuditAction {
-  LOGIN
-  LOGOUT
-  CREATE
-  UPDATE
-  DELETE
-  EXPORT
-  HEARTBEAT_SENT
-  HEARTBEAT_FAILED
-  SLACK_MODAL_OPENED
-  SLACK_ACTION_TAKEN
-  GHL_SYNC
-}
+// AuditAction: LOGIN, LOGOUT, CREATE, UPDATE, DELETE, EXPORT,
+//              HEARTBEAT_SENT, HEARTBEAT_FAILED, SLACK_MODAL_OPENED,
+//              SLACK_ACTION_TAKEN, GHL_SYNC
 
 model AuditLog {
-  id           String      @id @default(cuid())
-  action       AuditAction
-  resourceType String?     // e.g., "Client", "Note", "User"
+  id           String   @id @default(cuid())
+  action       String   // AuditAction
+  resourceType String?  // e.g., "Client", "Note", "User"
   resourceId   String?
-  metadata     String?     // JSON for additional context
+  metadata     String?  // JSON for additional context
   ipAddress    String?
   userAgent    String?
-  createdAt    DateTime    @default(now())
+  createdAt    DateTime @default(now())
 
   // Relations
-  user         User?       @relation(fields: [userId], references: [id])
+  user         User?    @relation(fields: [userId], references: [id])
   userId       String?
 
   @@map("audit_logs")

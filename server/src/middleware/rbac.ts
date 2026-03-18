@@ -61,6 +61,9 @@ export async function canAccessClient(
 /**
  * Middleware to filter client access based on user role
  * For use with list endpoints - modifies query to filter by coach
+ *
+ * By default, ALL users (coaches and admins) see ALL clients.
+ * Coaches can optionally filter to see only their clients via ?myClientsOnly=true
  */
 export function filterByCoach(req: Request, res: Response, next: NextFunction): void {
   if (!req.user) {
@@ -68,11 +71,14 @@ export function filterByCoach(req: Request, res: Response, next: NextFunction): 
     return;
   }
 
-  // Admins see all, coaches see only their clients
-  if (req.user.role === 'COACH') {
-    // Attach coach filter to request for use in route handlers
+  // Check if user wants to filter to only their clients
+  const myClientsOnly = req.query.myClientsOnly === 'true';
+
+  if (myClientsOnly && req.user.role === 'COACH') {
+    // Coach requested to see only their clients
     (req as any).coachFilter = { coachId: req.user.id };
   } else {
+    // Default: everyone sees all clients
     (req as any).coachFilter = {};
   }
 

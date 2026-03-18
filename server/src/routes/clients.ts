@@ -43,12 +43,13 @@ const updateClientSchema = z.object({
 
 const listQuerySchema = z.object({
   page: z.string().optional().transform(v => v ? parseInt(v, 10) : 1),
-  limit: z.string().optional().transform(v => v ? Math.min(parseInt(v, 10), 100) : 50),
+  limit: z.string().optional().transform(v => v ? Math.min(parseInt(v, 10), 500) : 50),
   status: z.enum(['ONBOARDING', 'ACTIVE', 'AT_RISK', 'COMPLETED', 'PAUSED']).optional(),
   onboardingStatus: z.enum(['NOT_BOOKED', 'BOOKED', 'COMPLETED', 'NO_SHOW']).optional(),
   coachId: z.string().optional(),
   search: z.string().optional(),
   atRiskOnly: z.string().optional().transform(v => v === 'true'),
+  myClientsOnly: z.string().optional(), // Filter to show only the coach's own clients
   sortBy: z.enum(['name', 'lastContactDate', 'createdAt', 'status']).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
 });
@@ -90,7 +91,7 @@ router.get(
 
     if (status) where.status = status;
     if (onboardingStatus) where.onboardingStatus = onboardingStatus;
-    if (coachId && req.user!.role === 'ADMIN') where.coachId = coachId;
+    if (coachId) where.coachId = coachId; // Any user can filter by coach
     if (atRiskOnly) where.status = 'AT_RISK';
 
     if (search) {
