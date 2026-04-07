@@ -1,9 +1,8 @@
 import { prisma } from '../index.js';
-import { AuditAction } from '@prisma/client';
 
 interface AuditLogParams {
   userId?: string | null;
-  action: AuditAction;
+  action: string;
   resourceType?: string | null;
   resourceId?: string | null;
   metadata?: Record<string, any>;

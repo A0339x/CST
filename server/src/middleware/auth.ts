@@ -74,7 +74,7 @@ export async function authenticate(
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
+      role: user.role as 'ADMIN' | 'COACH',
     };
 
     next();
@@ -95,8 +95,6 @@ export async function authenticate(
  * Generate JWT token for a user
  */
 export function generateToken(user: { id: string; email: string; role: string }): string {
-  const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
-
   return jwt.sign(
     {
       userId: user.id,
@@ -104,7 +102,7 @@ export function generateToken(user: { id: string; email: string; role: string })
       role: user.role,
     },
     EFFECTIVE_JWT_SECRET,
-    { expiresIn }
+    { expiresIn: '7d' }
   );
 }
 
@@ -143,7 +141,7 @@ export async function optionalAuth(
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
+        role: user.role as 'ADMIN' | 'COACH',
       };
     }
 

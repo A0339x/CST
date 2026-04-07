@@ -5,7 +5,7 @@ import { ZodSchema, ZodError } from 'zod';
  * Validation middleware factory
  * Creates middleware that validates request body against a Zod schema
  */
-export function validateBody<T>(schema: ZodSchema<T>) {
+export function validateBody<T>(schema: ZodSchema<T, any, any>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       req.body = schema.parse(req.body);
@@ -29,7 +29,7 @@ export function validateBody<T>(schema: ZodSchema<T>) {
 /**
  * Validate query parameters
  */
-export function validateQuery<T>(schema: ZodSchema<T>) {
+export function validateQuery<T>(schema: ZodSchema<T, any, any>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       req.query = schema.parse(req.query) as any;
@@ -53,7 +53,7 @@ export function validateQuery<T>(schema: ZodSchema<T>) {
 /**
  * Validate URL parameters
  */
-export function validateParams<T>(schema: ZodSchema<T>) {
+export function validateParams<T>(schema: ZodSchema<T, any, any>) {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
       req.params = schema.parse(req.params) as any;

@@ -1,7 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -44,7 +46,7 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -98,13 +100,25 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/slack', slackRoutes);
 
 // ===========================================
+// STATIC FRONTEND (production)
+// ===========================================
+
+const distPath = path.join(__dirname, '../../dist');
+app.use(express.static(distPath));
+
+// SPA fallback — serve index.html for any non-API route
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'));
+});
+
+// ===========================================
 // ERROR HANDLING
 // ===========================================
 
 app.use(errorHandler);
 
-// 404 handler
-app.use((req, res) => {
+// API 404 handler
+app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
@@ -114,11 +128,49 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 3001;
 
+async function seedIfEmpty() {
+  const userCount = await prisma.user.count();
+  if (userCount > 0) return;
+
+  console.log('Empty database — seeding default users...');
+  const hash = await bcrypt.hash('coach123', 12);
+  const users = [
+    { email: 'greg@mastermind.com', name: 'Greg Esman', role: 'ADMIN' },
+    { email: 'shane@mastermind.com', name: 'Shane', role: 'COACH' },
+    { email: 'jeff@mastermind.com', name: 'Jeff', role: 'COACH' },
+  ];
+  for (const u of users) {
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: {},
+      create: { email: u.email, name: u.name, role: u.role, passwordHash: hash },
+    });
+  }
+
+  // Seed curriculum steps
+  const steps = [
+    'Welcome & Vision Setting', 'Wallet Security Fundamentals', 'Exchange Setup & KYC',
+    'Liquidity Strategy 101', 'First Deployment', 'Advanced Yield Farming',
+    'Risk Management', 'Tax & Compliance', 'Scaling Operations', 'Mastermind Graduation',
+  ];
+  for (let i = 0; i < steps.length; i++) {
+    await prisma.curriculumStep.upsert({
+      where: { id: `step-${i + 1}` },
+      update: {},
+      create: { id: `step-${i + 1}`, title: steps[i], order: i },
+    });
+  }
+  console.log('Seed complete.');
+}
+
 async function main() {
   try {
     // Connect to database
     await prisma.$connect();
     console.log('Database connected');
+
+    // Seed if fresh database
+    await seedIfEmpty();
 
     // Schedule daily heartbeat
     scheduleHeartbeat();
