@@ -42,3 +42,11 @@ Client-data*.xlsx
 Client-data*.json
 sheets-export/
 nul
+Client Data/
+
+# SQLite WAL files
+*.db-shm
+*.db-wal
+
+# Local Claude settings
+.claude/settings.local.json

@@ -5,9 +5,9 @@
  * Save (Ctrl+S), then reload the Google Sheet.
  * A "📋 CST Tools" menu will appear in the toolbar.
  *
- * Sheet names expected:
- *   "Clients"    — Col A: Name, B: Email, C: Offer, D: Coach, E: Next Step, F: Last Contact Date
- *   "Notes Log"  — Col A: Client Name, B: Date, C: Notes, D: Coach
+ * Sheet names expected (matches All-Client-Data-Updated.xlsx structure):
+ *   "Clients"       — Col A: Client Name, B: Row ID, Y(25): Next Steps/Value, AG(33): Last Contact Date
+ *   "History Notes2"— Col A: Row ID, B: Client/ID, C: Notes, K(11): Client Name, L(12): Date (ISO), M(13): Coach
  */
 
 // ---------------------------------------------------------------------------
@@ -302,26 +302,27 @@ function showAddEntryDialog() {
 }
 
 /**
- * Called from the dialog. Updates an existing Notes Log row in-place if one exists
+ * Called from the dialog. Updates an existing History Notes2 row in-place if one exists
  * for clientName + dateStr, otherwise appends a new row. Returns true if amended.
  */
 function addEntry(clientName, dateStr, notes, coach) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const logSheet = ss.getSheetByName("Notes Log");
-  if (!logSheet) throw new Error('Sheet "Notes Log" not found.');
+  const historySheet = ss.getSheetByName("History Notes2");
+  if (!historySheet) throw new Error('Sheet "History Notes2" not found.');
 
-  const lastRow = logSheet.getLastRow();
+  const lastRow = historySheet.getLastRow();
   let amended = false;
 
   if (lastRow >= 2) {
-    const data = logSheet.getRange(2, 1, lastRow - 1, 4).getValues();
+    // Read all 13 columns; client name is col K (index 10), date is col L (index 11)
+    const data = historySheet.getRange(2, 1, lastRow - 1, 13).getValues();
     const targetClient = clientName.trim().toLowerCase();
     const targetDate   = dateStr.trim();
     let matchRow = -1;
 
     for (let i = data.length - 1; i >= 0; i--) {
-      const rowClient = String(data[i][0]).trim().toLowerCase();
-      const rowDate   = normalizeDate_(data[i][1]);
+      const rowClient = String(data[i][10]).trim().toLowerCase(); // col K
+      const rowDate   = normalizeDate_(data[i][11]);              // col L
       if (rowClient === targetClient && rowDate === targetDate) {
         matchRow = i + 2; // 1-based, offset by header row
         break;
@@ -329,21 +330,38 @@ function addEntry(clientName, dateStr, notes, coach) {
     }
 
     if (matchRow > 0) {
-      logSheet.getRange(matchRow, 3, 1, 2).setValues([[notes, coach || ""]]);
+      // Update col C (notes) and col M (coach) in the matched row
+      historySheet.getRange(matchRow, 3).setValue(notes);
+      historySheet.getRange(matchRow, 13).setValue(coach || "");
       amended = true;
     }
   }
 
   if (!amended) {
-    logSheet.appendRow([clientName, dateStr, notes, coach || ""]);
+    // Look up the encoded client ID from Clients col B
+    const clientsSheet = ss.getSheetByName("Clients");
+    const clientRowId  = clientsSheet ? getClientRowId_(clientsSheet, clientName) : "";
+
+    // Append new 13-column row: A=rowId, B=clientId, C=notes, D-J=empty, K=name, L=isoDate, M=coach
+    const isoDate = dateStr + "T00:00:00.000Z";
+    historySheet.appendRow([
+      generateRowId_(), // A: Row ID
+      clientRowId,      // B: Client / ID
+      notes,            // C: Value (notes)
+      "", "", "", "", "", "", "", // D–J: unused
+      clientName,       // K: Filter (client name)
+      isoDate,          // L: Modified / Date
+      coach || "",      // M: Modified / By
+    ]);
   }
 
-  // Update Clients sheet: Next Step (Col E) and Last Contact Date (Col F) — single atomic write
+  // Update Clients sheet: Next Steps/Value (col Y=25) and Last Contact Date (col AG=33)
   const clientsSheet = ss.getSheetByName("Clients");
   if (clientsSheet) {
     const row = findClientRow_(clientsSheet, clientName);
     if (row > 0) {
-      clientsSheet.getRange(row, 5, 1, 2).setValues([[notes, dateStr]]);
+      clientsSheet.getRange(row, 25).setValue(notes);   // col Y: Next Steps / Value
+      clientsSheet.getRange(row, 33).setValue(dateStr); // col AG: CSM / Date of Last Contact
     }
   }
 
@@ -359,27 +377,31 @@ function addEntry(clientName, dateStr, notes, coach) {
 }
 
 /**
- * Returns { notes, coach } for the most recent Notes Log row matching clientName + dateStr,
+ * Returns { notes, coach } for the most recent History Notes2 row matching clientName + dateStr,
  * or null if none found. Called from the dialog when client/date change.
  */
 function getEntryForDate(clientName, dateStr) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Notes Log");
+  const sheet = ss.getSheetByName("History Notes2");
   if (!sheet) return null;
 
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return null;
 
-  const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  // Read all 13 columns; client name is col K (index 10), date col L (index 11)
+  const data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
   const targetClient = clientName.trim().toLowerCase();
   const targetDate   = dateStr.trim();
   let match = null;
 
   for (let i = 0; i < data.length; i++) {
-    const rowClient = String(data[i][0]).trim().toLowerCase();
-    const rowDate   = normalizeDate_(data[i][1]);
+    const rowClient = String(data[i][10]).trim().toLowerCase(); // col K
+    const rowDate   = normalizeDate_(data[i][11]);              // col L
     if (rowClient === targetClient && rowDate === targetDate) {
-      match = { notes: String(data[i][2] || "").trim(), coach: String(data[i][3] || "").trim() };
+      match = {
+        notes: String(data[i][2]  || "").trim(), // col C
+        coach: String(data[i][12] || "").trim(), // col M
+      };
     }
   }
 
@@ -518,30 +540,85 @@ function showClientHistoryDialog() {
 }
 
 /**
- * Returns all notes for a client from the Notes Log sheet, newest first.
+ * Returns all notes for a client from History Notes2, newest first.
+ * Also checks the Clients sheet col Y (Next Steps) + col AG (Last Contact Date) and
+ * includes that entry if it isn't already represented in History Notes2.
+ * col K (index 10) = client name, col L (index 11) = date, col C (index 2) = notes, col M (index 12) = coach
  */
 function getClientHistory(clientName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName("Notes Log");
-  if (!sheet) throw new Error('Sheet "Notes Log" not found.');
-
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return [];
+  const sheet = ss.getSheetByName("History Notes2");
+  if (!sheet) throw new Error('Sheet "History Notes2" not found.');
 
   const tz = Session.getScriptTimeZone();
   const target = clientName.trim().toLowerCase();
-  const data = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
+  const entries = [];
 
-  const entries = data
-    .filter(row => String(row[0]).trim().toLowerCase() === target)
-    .map(row => ({
-      rawDate: row[1] instanceof Date ? row[1].getTime() : new Date(String(row[1] || "")).getTime() || 0,
-      date:    row[1] instanceof Date
-                 ? Utilities.formatDate(row[1], tz, "MMMM d, yyyy")
-                 : String(row[1] || "").trim().slice(0, 10),
-      notes: String(row[2] || "").trim(),
-      coach: String(row[3] || "").trim(),
-    }));
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    // Read all 13 columns
+    const data = sheet.getRange(2, 1, lastRow - 1, 13).getValues();
+    data
+      .filter(row => String(row[10]).trim().toLowerCase() === target) // col K
+      .forEach(function(row) {
+        const rawDateVal = row[11]; // col L: ISO string or Date
+        let rawDate = 0;
+        let displayDate = "";
+        if (rawDateVal instanceof Date) {
+          rawDate = rawDateVal.getTime();
+          displayDate = Utilities.formatDate(rawDateVal, tz, "MMMM d, yyyy");
+        } else {
+          const s = String(rawDateVal || "").trim().slice(0, 10);
+          const d = new Date(s);
+          rawDate = isNaN(d.getTime()) ? 0 : d.getTime();
+          displayDate = isNaN(d.getTime()) ? s : Utilities.formatDate(d, tz, "MMMM d, yyyy");
+        }
+        entries.push({
+          rawDate:     rawDate,
+          normalDate:  normalizeDate_(rawDateVal),
+          date:        displayDate,
+          notes:       String(row[2]  || "").trim(), // col C
+          coach:       String(row[12] || "").trim(), // col M
+        });
+      });
+  }
+
+  // Also check Clients sheet col Y (Next Steps/Value) + col AG (Last Contact Date).
+  // If a more recent entry exists there that isn't already in History Notes2, include it.
+  const clientsSheet = ss.getSheetByName("Clients");
+  if (clientsSheet) {
+    const clientRow = findClientRow_(clientsSheet, clientName);
+    if (clientRow > 0) {
+      // col Y = column 25 (1-based), col AG = column 33 (1-based)
+      const clientData = clientsSheet.getRange(clientRow, 25, 1, 9).getValues()[0];
+      const nextStepText = String(clientData[0] || "").trim();  // col Y (offset 0)
+      const lastContactVal = clientData[8];                      // col AG (offset 8 = col 33)
+
+      if (nextStepText) {
+        const normalLastContact = normalizeDate_(lastContactVal);
+        // Only add if this date isn't already in History Notes2 entries
+        const alreadyPresent = entries.some(function(e) {
+          return e.normalDate === normalLastContact;
+        });
+        if (!alreadyPresent && normalLastContact) {
+          let rawDate = 0;
+          let displayDate = normalLastContact;
+          const d = new Date(normalLastContact);
+          if (!isNaN(d.getTime())) {
+            rawDate = d.getTime();
+            displayDate = Utilities.formatDate(d, tz, "MMMM d, yyyy");
+          }
+          entries.push({
+            rawDate:    rawDate,
+            normalDate: normalLastContact,
+            date:       displayDate,
+            notes:      nextStepText,
+            coach:      "",
+          });
+        }
+      }
+    }
+  }
 
   entries.sort(function(a, b) { return b.rawDate - a.rawDate; });
 
@@ -563,10 +640,16 @@ function getClientNames_() {
   if (!sheet) return [];
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
+  const seen = new Set();
   return sheet.getRange(2, 1, lastRow - 1, 1)
     .getValues()
     .map(r => String(r[0]).trim())
-    .filter(n => n.length > 0);
+    .filter(n => {
+      if (!n || seen.has(n.toLowerCase())) return false;
+      seen.add(n.toLowerCase());
+      return true;
+    })
+    .sort();
 }
 
 /**
@@ -600,6 +683,30 @@ function normalizeDate_(value) {
     return Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
   }
   return s;
+}
+
+/**
+ * Generates a 22-character unique row ID matching the format used in History Notes2.
+ */
+function generateRowId_() {
+  return Utilities.getUuid().replace(/-/g, '').substring(0, 22);
+}
+
+/**
+ * Looks up the encoded client Row ID (col B) for a given client name (col A).
+ * Returns empty string if not found — note is still saved, client ID is non-critical.
+ */
+function getClientRowId_(sheet, clientName) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return '';
+  const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  const target = clientName.trim().toLowerCase();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim().toLowerCase() === target) {
+      return String(data[i][1] || '');
+    }
+  }
+  return '';
 }
 
 /**

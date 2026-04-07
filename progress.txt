@@ -93,3 +93,31 @@ Security Hardening (based on best practices research):
 - Added input validation for note length (max 10,000 chars)
 - Added visual loading indicator on individual progress steps being toggled
 - Improved error messages to not expose internal details
+
+=== Session: 2026-03-23 ===
+Resumed: Google Sheets interim CST + data pipeline work
+
+Data Pipeline (new scripts in scripts/):
+- merge-notes.py: merges Most-Recent-Updates.xlsx notes into All-Client-Data-Updated.xlsx History Notes2
+- merge-lee-export.py: merged Lee's Export.xlsx (2,675 notes, 200 clients) into All-Client-Data-Updated.xlsx
+- generate-all-client-csv.py: reads All-Client-Data-Updated.xlsx, outputs sheets-export/clients.csv + notes-log.csv
+- dedupe-clients.py: deduped Clients sheet (426 → 339 rows), merging contact data from duplicates
+
+Master File: Client Data/All-Client-Data-Updated.xlsx
+- 339 unique clients (deduped)
+- 2,659+ notes in History Notes2
+- Source of truth for Google Sheets and future CST app
+
+Column mapping (critical for scripts/apps-script.js):
+  Clients sheet: A=Name, B=RowID, E=Email, Y(25)=NextSteps, AG(33)=LastContact
+  History Notes2: A=RowID, B=ClientID, C=Notes, K(11)=ClientName, L(12)=Date(ISO), M(13)=Coach
+
+Google Sheets Integration:
+- apps-script.js updated to write directly to History Notes2 and Clients sheet
+- No more CSV export/import cycle — Google Sheet IS the master doc
+- Upload All-Client-Data-Updated.xlsx to Google Drive, open as Google Sheet, paste updated script
+- generate-all-client-csv.py includes current Next Steps (col Y) as most recent note in notes-log
+
+Next Steps:
+- Resume export UI work for main CST app (ExportModal component + backend additions)
+- Export UI plan is saved at /Users/gregoryesman/.claude/plans/tender-conjuring-sutton.md
