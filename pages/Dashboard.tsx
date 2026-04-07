@@ -4,6 +4,7 @@ import { ClientStatusBadge, OnboardingBadge } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
 import { clientsApi, curriculumApi, usersApi, Client as ApiClient, CurriculumStep, UserWithStats } from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import ExportModal from '../components/ExportModal';
 import {
   AlertTriangle,
   Search,
@@ -20,7 +21,8 @@ import {
   ArrowUpDown,
   Loader2,
   RefreshCw,
-  Users
+  Users,
+  Download
 } from 'lucide-react';
 
 // Extended client type for Dashboard display
@@ -391,6 +393,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
   const [coaches, setCoaches] = useState<UserWithStats[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Fetch data with AbortController for cleanup
   useEffect(() => {
@@ -605,14 +608,30 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateToClient }) => {
       {/* Header with Refresh */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <button
-          onClick={loadData}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+          <button
+            onClick={loadData}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {showExportModal && (
+        <ExportModal
+          onClose={() => setShowExportModal(false)}
+          coaches={coaches.map((c) => ({ id: c.id, name: c.name }))}
+        />
+      )}
 
       {/* Alert Panel */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -21,6 +21,8 @@ const exportQuerySchema = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
   status: z.enum(['ONBOARDING', 'ACTIVE', 'AT_RISK', 'COMPLETED', 'PAUSED']).optional(),
   coachId: z.string().optional(),
+  dateFrom: z.string().optional(),
+  dateTo: z.string().optional(),
 });
 
 // ===========================================
@@ -170,7 +172,7 @@ router.get(
   filterByCoach,
   validateQuery(exportQuerySchema),
   asyncHandler(async (req: Request, res: Response) => {
-    const { format, coachId } = req.query as any;
+    const { format, coachId, dateFrom, dateTo } = req.query as any;
 
     // Build client filter
     const clientWhere: any = {
@@ -182,11 +184,21 @@ router.get(
       clientWhere.coachId = coachId;
     }
 
+    // Build note-level date filter
+    const noteWhere: any = { client: clientWhere };
+    if (dateFrom || dateTo) {
+      noteWhere.createdAt = {};
+      if (dateFrom) noteWhere.createdAt.gte = new Date(dateFrom);
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        noteWhere.createdAt.lte = end;
+      }
+    }
+
     // Fetch notes for accessible clients
     const notes = await prisma.note.findMany({
-      where: {
-        client: clientWhere,
-      },
+      where: noteWhere,
       include: {
         client: {
           select: { name: true, email: true },

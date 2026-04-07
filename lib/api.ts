@@ -454,13 +454,27 @@ export const adminApi = {
 // EXPORT API
 // ============================================
 
+export interface ExportClientsParams {
+  format?: 'csv' | 'json';
+  status?: string;
+  coachId?: string;
+}
+
+export interface ExportNotesParams {
+  format?: 'csv' | 'json';
+  coachId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export const exportApi = {
-  exportClients: async (format: 'csv' | 'json' = 'csv'): Promise<Blob | Client[]> => {
+  exportClients: async (params: ExportClientsParams = {}): Promise<Blob | Client[]> => {
     const token = getAuthToken();
-    const response = await fetch(`${API_BASE_URL}/export/clients?format=${format}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    const { format = 'csv', ...rest } = params;
+    const query = new URLSearchParams({ format });
+    Object.entries(rest).forEach(([k, v]) => { if (v) query.append(k, v); });
+    const response = await fetch(`${API_BASE_URL}/export/clients?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!response.ok) {
@@ -468,19 +482,18 @@ export const exportApi = {
       throw new ApiError(response.status, error.error);
     }
 
-    if (format === 'csv') {
-      return response.blob();
-    }
+    if (format === 'csv') return response.blob();
     const data = await response.json();
     return data.clients;
   },
 
-  exportNotes: async (format: 'csv' | 'json' = 'csv'): Promise<Blob | Note[]> => {
+  exportNotes: async (params: ExportNotesParams = {}): Promise<Blob | Note[]> => {
     const token = getAuthToken();
-    const response = await fetch(`${API_BASE_URL}/export/notes?format=${format}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+    const { format = 'csv', ...rest } = params;
+    const query = new URLSearchParams({ format });
+    Object.entries(rest).forEach(([k, v]) => { if (v) query.append(k, v); });
+    const response = await fetch(`${API_BASE_URL}/export/notes?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!response.ok) {
@@ -488,9 +501,7 @@ export const exportApi = {
       throw new ApiError(response.status, error.error);
     }
 
-    if (format === 'csv') {
-      return response.blob();
-    }
+    if (format === 'csv') return response.blob();
     const data = await response.json();
     return data.notes;
   },
