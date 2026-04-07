@@ -53,7 +53,7 @@ async function fetchGHLContacts(): Promise<GHLContact[]> {
       throw new Error(`GHL API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as { contacts?: GHLContact[] };
     return data.contacts || [];
   } catch (error: any) {
     console.error('Failed to fetch GHL contacts:', error);
@@ -84,7 +84,7 @@ async function fetchGHLAppointments(contactId: string): Promise<GHLAppointment[]
       return [];
     }
 
-    const data = await response.json();
+    const data = await response.json() as { appointments?: GHLAppointment[] };
     return data.appointments || [];
   } catch (error) {
     console.error(`Failed to fetch appointments for contact ${contactId}:`, error);
@@ -199,7 +199,7 @@ export async function getGHLContactByEmail(email: string): Promise<GHLContact | 
       return null;
     }
 
-    const data = await response.json();
+    const data = await response.json() as { contacts?: GHLContact[] };
     return data.contacts?.[0] || null;
   } catch (error) {
     console.error('Failed to lookup GHL contact:', error);
